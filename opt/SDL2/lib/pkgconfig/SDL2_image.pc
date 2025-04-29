@@ -1,0 +1,14 @@
+prefix=/nix/store/4j2rqzsnq3p4knhxw9ga92x3kc0dmzp3-SDL2_image-2.8.2
+exec_prefix=${prefix}
+libdir=/nix/store/4j2rqzsnq3p4knhxw9ga92x3kc0dmzp3-SDL2_image-2.8.2/lib
+includedir=/nix/store/231k8lgscwhg21gf0vj7gqfbnh1vf6pg-SDL2_image-2.8.2-dev/include
+
+Name: SDL2_image
+Description: image loading library for Simple DirectMedia Layer
+Version: 2.8.2
+Requires: sdl2 >= 2.0.9
+Libs: -L${libdir} -lSDL2_image
+Requires.private: 
+Libs.private: 
+Cflags: -I${includedir}/SDL2
+

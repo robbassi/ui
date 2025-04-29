@@ -1,0 +1,13 @@
+prefix=/nix/store/n3n23197wgna5q0g1l8k6nqbw2lm4k5a-SDL2_mixer-2.8.0
+exec_prefix=${prefix}
+libdir=/nix/store/n3n23197wgna5q0g1l8k6nqbw2lm4k5a-SDL2_mixer-2.8.0/lib
+includedir=/nix/store/kmiri2iapmkxvrnsmcx0567avl6817d6-SDL2_mixer-2.8.0-dev/include
+
+Name: SDL2_mixer
+Description: mixer library for Simple DirectMedia Layer
+Version: 2.8.0
+Requires: sdl2 >= 2.0.9
+Libs: -L${libdir} -lSDL2_mixer
+Cflags: -I${includedir}/SDL2
+Requires.private:  fluidsynth
+Libs.private: 
