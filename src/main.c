@@ -1,6 +1,7 @@
 #include "SDL.h"
 #include "SDL_ttf.h"
 #include "SDL_image.h"
+#include <assert.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
@@ -41,7 +42,7 @@ void InitSDL() {
   font = TTF_OpenFont(FONT, 16);
 }
 
-typedef SDL_Point Point;
+typedef SDL_Point v2;
 typedef SDL_Rect Rect;
 
 typedef int8_t i8;
@@ -57,40 +58,21 @@ typedef double f64;
 
 // UI library
 
-#define UI_MAX_STATE 1024
 #define UI_MAX_DRAW_CMD 1024
+#define UI_MAX_STATE 1024
 
-// UI State
-
-typedef struct {
-  i32 x;
-} UI_State;
-
-UI_State ui_state_stack[1024] = {
-  { // default state
-  }
-};
-
-UI_State *ui = &ui_state_stack[0];
-
-// UI Primitive
+// UI Draw Command
 
 typedef enum {
   // Rectangle
   UI_RECT,
   // Texture/image
   UI_IMAGE,
-} UI_Primitive;
+} UI_DrawCmdType;
 
 typedef struct {
-  i32 x, y, w, h;
-} UI_RectData;
-
-// UI Draw Command
-
-typedef struct {
-  UI_Primitive prim;
-  UI_RectData rect;
+  UI_DrawCmdType type;
+  Rect rect;
   void* image;
 } UI_DrawCmd;
 
@@ -99,19 +81,99 @@ typedef struct {
 UI_DrawCmd ui_draw_queue[UI_MAX_DRAW_CMD] = {};
 i32 ui_draw_queue_length = 0;
 
+UI_DrawCmd *UI_DrawQueuePush() {
+  assert(ui_draw_queue_length < UI_MAX_DRAW_CMD);
+
+  return &ui_draw_queue[ui_draw_queue_length++];
+}
+
+// UI State
+
+typedef enum {
+  UI_LAYOUT_HORIZONTAL,
+  UI_LAYOUT_VERTICAL,
+} UI_Layout;
+
+typedef struct {
+  v2 pos;
+  UI_Layout layout;
+} UI_State;
+
+const UI_State ui_default_state = {
+  .pos = {0, 0},
+};
+
+UI_State ui_state_stack[1024] = { ui_default_state };
+i32 ui_state_stack_length = 0;
+UI_State *ui = ui_state_stack;
+
+void UI_Clear() {
+  ui_draw_queue_length = 0;
+  ui_state_stack_length = 0;
+  ui = &ui_state_stack[ui_state_stack_length];
+  *ui = ui_default_state;
+}
+
+void UI_PushState() {
+  assert(ui_state_stack_length < UI_MAX_STATE);
+
+  ui[1] = ui[0];
+  ui_state_stack_length++;
+  ui++;
+}
+
+void UI_PopState() {
+  assert(ui_state_stack_length > 0);
+
+  ui_state_stack_length--;
+  ui--;
+}
+
+// UI Layout
+
+void UI_UpdateLayout() {
+  UI_DrawCmd *last_cmd = &ui_draw_queue[ui_draw_queue_length - 1];
+  switch (ui->layout) {
+    case UI_LAYOUT_HORIZONTAL:
+      ui->pos.x += last_cmd->rect.w;
+      break;
+    case UI_LAYOUT_VERTICAL:
+      ui->pos.y += last_cmd->rect.h;
+      break;
+      break;
+  }
+}
+
+// UI Widgets
+
+// UI Rect
+
+void UI_Rect(i32 w, i32 h) {
+  UI_DrawCmd *cmd = UI_DrawQueuePush();
+  cmd->type = UI_RECT;
+  cmd->rect = (Rect){ui->pos.x, ui->pos.y, w, h};
+  UI_UpdateLayout();
+}
+
+// UI Panel
+
+void UI_BeginPanel() {
+  
+}
+
 // END UI library
 
 // UI Renderer
 
 void UI_Render() {
   for (i32 i = 0; i < ui_draw_queue_length; i++) {
-    UI_DrawCmd *draw_cmd = &ui_draw_queue[i];
-    switch (draw_cmd->prim) {
+    UI_DrawCmd *cmd = &ui_draw_queue[i];
+    switch (cmd->type) {
       case UI_RECT:
-        SDL_RenderDrawRect(renderer, (Rect*)&draw_cmd->rect);
+        SDL_RenderDrawRect(renderer, (Rect*)&cmd->rect);
         break;
       case UI_IMAGE:
-        SDL_RenderCopy(renderer, draw_cmd->image, NULL, (Rect*)&draw_cmd->rect);
+        SDL_RenderCopy(renderer, cmd->image, NULL, (Rect*)&cmd->rect);
         break;
     }
   }
@@ -124,15 +186,15 @@ i32 main() {
 
   SDL_Event event;
 
-  ui_draw_queue[0] = (UI_DrawCmd){
-    .prim = UI_RECT,
-    .rect = { 10, 10, 100, 50 },
-  };
-  ui_draw_queue[1] = (UI_DrawCmd){
-    .prim = UI_RECT,
-    .rect = { 15, 15, 100, 50 },
-  };
-  ui_draw_queue_length = 2;
+  // ui_draw_queue[0] = (UI_DrawCmd){
+  //   .prim = UI_RECT,
+  //   .rect = { 10, 10, 100, 50 },
+  // };
+  // ui_draw_queue[1] = (UI_DrawCmd){
+  //   .prim = UI_RECT,
+  //   .rect = { 15, 15, 100, 50 },
+  // };
+  // ui_draw_queue_length = 2;
 
   while (true) {
 
@@ -151,7 +213,19 @@ i32 main() {
 
       // Draw UI
       {
+        UI_Clear();
+
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        
+        ui->layout = UI_LAYOUT_VERTICAL;
+        UI_Rect(100, 50);
+        UI_Rect(100, 50);
+        UI_Rect(100, 50);
+        ui->layout = UI_LAYOUT_HORIZONTAL;
+        UI_Rect(200, 50);
+        UI_Rect(200, 50);
+        UI_Rect(200, 50);
+        
         UI_Render();
       }
 
