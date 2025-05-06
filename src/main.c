@@ -95,12 +95,21 @@ typedef enum {
 } UI_Layout;
 
 typedef struct {
+  // A draw queue index. Useful for post processing of child cmds.
+  i32 index;
+  // The on screen position of the next widget.
   v2 pos;
+  // The current layout type.
   UI_Layout layout;
+  // The current bounds of visible widgets.
+  Rect bounds;
 } UI_State;
 
 const UI_State ui_default_state = {
+  .index = 0,
   .pos = {0, 0},
+  .layout = UI_LAYOUT_VERTICAL;
+  .bounds = {0, 0, 0, 0},
 };
 
 UI_State ui_state_stack[1024] = { ui_default_state };
@@ -131,16 +140,20 @@ void UI_PopState() {
 
 // UI Layout
 
-void UI_UpdateLayout() {
-  UI_DrawCmd *last_cmd = &ui_draw_queue[ui_draw_queue_length - 1];
+void UI_UpdateLayout(Rect *rect) {
   switch (ui->layout) {
     case UI_LAYOUT_HORIZONTAL:
-      ui->pos.x += last_cmd->rect.w;
+      ui->pos.x += rect->w;
       break;
     case UI_LAYOUT_VERTICAL:
-      ui->pos.y += last_cmd->rect.h;
+      ui->pos.y += rect->h;
       break;
-      break;
+  }
+  if (ui->bounds.x + ui->bounds.w < ui->pos.x) {
+    ui->bounds.w = ui->pos.x - ui->bounds.x;
+  }
+  if (ui->bounds.y + ui->bounds.h < ui->pos.y) {
+    ui->bounds.h = ui->pos.y - ui->bounds.y;
   }
 }
 
@@ -152,13 +165,35 @@ void UI_Rect(i32 w, i32 h) {
   UI_DrawCmd *cmd = UI_DrawQueuePush();
   cmd->type = UI_RECT;
   cmd->rect = (Rect){ui->pos.x, ui->pos.y, w, h};
+
   UI_UpdateLayout();
 }
 
 // UI Panel
 
 void UI_BeginPanel() {
-  
+  UI_PushState();
+
+  // Start of panel. Store the index, and create rect cmd, which we'll adjust
+  // later in UI_EndPanel().
+  ui->draw_queue_index = ui_draw_queue_length;
+  {
+    UI_DrawCmd *cmd = UI_DrawQueuePush();
+    cmd->type = UI_RECT;
+  }
+}
+
+void UI_EndPanel() {
+  UI_DrawCmd *cmd = &ui_draw_queue[ui->index];
+  cmd->rect.w = ui->bounds.w;
+  cmd->rect.h = ui->bounds.h;
+
+  UI_PopState();
+
+  cmd->rect.x = ui->pos.x;
+  cmd->rect.y = ui->pos.y;
+
+  UI_UpdateLayout(&cmd->rect);
 }
 
 // END UI library
