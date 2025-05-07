@@ -88,7 +88,7 @@ typedef struct {
 UI_DrawCmd ui_draw_queue[UI_MAX_DRAW_CMD] = {};
 i32 ui_draw_queue_length = 0;
 
-UI_DrawCmd *UI_DrawQueuePush() {
+UI_DrawCmd *UI_PushDrawCmd() {
   assert(ui_draw_queue_length < UI_MAX_DRAW_CMD);
 
   return &ui_draw_queue[ui_draw_queue_length++];
@@ -175,7 +175,7 @@ void UI_UpdateLayout(Rect *rect) {
 // UI Rect
 
 void UI_Rect(i32 w, i32 h) {
-  UI_DrawCmd *cmd = UI_DrawQueuePush();
+  UI_DrawCmd *cmd = UI_PushDrawCmd();
   cmd->type = UI_RECT;
   cmd->rect = (Rect){ui->pos.x, ui->pos.y, w, h};
 
@@ -197,7 +197,7 @@ void UI_BeginPanel() {
   ui->pos.x += ui->padding.x;
   ui->pos.y += ui->padding.y;
   {
-    UI_DrawCmd *cmd = UI_DrawQueuePush();
+    UI_DrawCmd *cmd = UI_PushDrawCmd();
     cmd->type = UI_PANEL;
   }
 }
@@ -262,35 +262,31 @@ i32 main() {
       }
     }
 
+    // Update.
+    {
+      UI_Clear();
+
+      UI_BeginPanel();
+        UI_BeginPanel();
+          ui->layout = UI_LAYOUT_VERTICAL;
+          UI_Rect(100, 50);
+          UI_Rect(100, 50);
+          UI_Rect(100, 50);
+        UI_EndPanel();
+        UI_BeginPanel();
+          ui->layout = UI_LAYOUT_HORIZONTAL;
+          UI_Rect(200, 50);
+          UI_Rect(200, 50);
+          UI_Rect(200, 50);
+        UI_EndPanel();
+      UI_EndPanel();
+    }
+
     // Render.
     {
       SDL_SetRenderDrawColor(renderer, 60, 80, 40, 255);
       SDL_RenderClear(renderer);
-
-      // Draw UI
-      {
-        UI_Clear();
-
-        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-        
-        UI_BeginPanel();
-          UI_BeginPanel();
-            ui->layout = UI_LAYOUT_VERTICAL;
-            UI_Rect(100, 50);
-            UI_Rect(100, 50);
-            UI_Rect(100, 50);
-          UI_EndPanel();
-          UI_BeginPanel();
-            ui->layout = UI_LAYOUT_HORIZONTAL;
-            UI_Rect(200, 50);
-            UI_Rect(200, 50);
-            UI_Rect(200, 50);
-          UI_EndPanel();
-        UI_EndPanel();
-        
-        UI_Render();
-      }
-
+      UI_Render();
       SDL_RenderPresent(renderer);
     }
 
