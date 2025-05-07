@@ -108,7 +108,7 @@ typedef struct {
 const UI_State ui_default_state = {
   .index = 0,
   .pos = {0, 0},
-  .layout = UI_LAYOUT_VERTICAL;
+  .layout = UI_LAYOUT_VERTICAL,
   .bounds = {0, 0, 0, 0},
 };
 
@@ -149,11 +149,11 @@ void UI_UpdateLayout(Rect *rect) {
       ui->pos.y += rect->h;
       break;
   }
-  if (ui->bounds.x + ui->bounds.w < ui->pos.x) {
-    ui->bounds.w = ui->pos.x - ui->bounds.x;
+  if (ui->bounds.x + ui->bounds.w < rect->x + rect->w) {
+    ui->bounds.w = rect->x + rect->w - ui->bounds.x;
   }
-  if (ui->bounds.y + ui->bounds.h < ui->pos.y) {
-    ui->bounds.h = ui->pos.y - ui->bounds.y;
+  if (ui->bounds.y + ui->bounds.h < rect->y + rect->h) {
+    ui->bounds.h = rect->y + rect->h - ui->bounds.y;
   }
 }
 
@@ -166,7 +166,7 @@ void UI_Rect(i32 w, i32 h) {
   cmd->type = UI_RECT;
   cmd->rect = (Rect){ui->pos.x, ui->pos.y, w, h};
 
-  UI_UpdateLayout();
+  UI_UpdateLayout(&cmd->rect);
 }
 
 // UI Panel
@@ -176,7 +176,11 @@ void UI_BeginPanel() {
 
   // Start of panel. Store the index, and create rect cmd, which we'll adjust
   // later in UI_EndPanel().
-  ui->draw_queue_index = ui_draw_queue_length;
+  ui->bounds.x = ui->pos.x;
+  ui->bounds.y = ui->pos.y;
+  ui->bounds.w = 0;
+  ui->bounds.h = 0;
+  ui->index = ui_draw_queue_length;
   {
     UI_DrawCmd *cmd = UI_DrawQueuePush();
     cmd->type = UI_RECT;
@@ -185,14 +189,9 @@ void UI_BeginPanel() {
 
 void UI_EndPanel() {
   UI_DrawCmd *cmd = &ui_draw_queue[ui->index];
-  cmd->rect.w = ui->bounds.w;
-  cmd->rect.h = ui->bounds.h;
+  cmd->rect = ui->bounds;
 
   UI_PopState();
-
-  cmd->rect.x = ui->pos.x;
-  cmd->rect.y = ui->pos.y;
-
   UI_UpdateLayout(&cmd->rect);
 }
 
@@ -252,14 +251,20 @@ i32 main() {
 
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         
-        ui->layout = UI_LAYOUT_VERTICAL;
-        UI_Rect(100, 50);
-        UI_Rect(100, 50);
-        UI_Rect(100, 50);
-        ui->layout = UI_LAYOUT_HORIZONTAL;
-        UI_Rect(200, 50);
-        UI_Rect(200, 50);
-        UI_Rect(200, 50);
+        UI_BeginPanel();
+          UI_BeginPanel();
+            ui->layout = UI_LAYOUT_VERTICAL;
+            UI_Rect(100, 50);
+            UI_Rect(100, 50);
+            UI_Rect(100, 50);
+          UI_EndPanel();
+          UI_BeginPanel();
+            ui->layout = UI_LAYOUT_HORIZONTAL;
+            UI_Rect(200, 50);
+            UI_Rect(200, 50);
+            UI_Rect(200, 50);
+          UI_EndPanel();
+        UI_EndPanel();
         
         UI_Render();
       }
