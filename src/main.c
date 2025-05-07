@@ -64,14 +64,21 @@ typedef double f64;
 // UI Draw Command
 
 typedef enum {
-  // Rectangle
   UI_RECT,
-  // Texture/image
+  UI_PANEL,
   UI_IMAGE,
 } UI_DrawCmdType;
 
+typedef enum {
+  UI_STYLE_NONE,
+  UI_STYLE_ACTIVE,
+  UI_STYLE_HOVER,
+  UI_STYLE_DOWN,
+} UI_DrawCmdStyle;
+
 typedef struct {
   UI_DrawCmdType type;
+  UI_DrawCmdStyle style;
   Rect rect;
   void* image;
 } UI_DrawCmd;
@@ -103,6 +110,10 @@ typedef struct {
   UI_Layout layout;
   // The current bounds of visible widgets.
   Rect bounds;
+  // The space between components.
+  v2 margin;
+  // The padding for components.
+  v2 padding;
 } UI_State;
 
 const UI_State ui_default_state = {
@@ -110,6 +121,8 @@ const UI_State ui_default_state = {
   .pos = {0, 0},
   .layout = UI_LAYOUT_VERTICAL,
   .bounds = {0, 0, 0, 0},
+  .margin = {10, 10},
+  .padding = {10, 10},
 };
 
 UI_State ui_state_stack[1024] = { ui_default_state };
@@ -143,10 +156,10 @@ void UI_PopState() {
 void UI_UpdateLayout(Rect *rect) {
   switch (ui->layout) {
     case UI_LAYOUT_HORIZONTAL:
-      ui->pos.x += rect->w;
+      ui->pos.x += rect->w + ui->margin.x;
       break;
     case UI_LAYOUT_VERTICAL:
-      ui->pos.y += rect->h;
+      ui->pos.y += rect->h + ui->margin.y;
       break;
   }
   if (ui->bounds.x + ui->bounds.w < rect->x + rect->w) {
@@ -181,15 +194,19 @@ void UI_BeginPanel() {
   ui->bounds.w = 0;
   ui->bounds.h = 0;
   ui->index = ui_draw_queue_length;
+  ui->pos.x += ui->padding.x;
+  ui->pos.y += ui->padding.y;
   {
     UI_DrawCmd *cmd = UI_DrawQueuePush();
-    cmd->type = UI_RECT;
+    cmd->type = UI_PANEL;
   }
 }
 
 void UI_EndPanel() {
   UI_DrawCmd *cmd = &ui_draw_queue[ui->index];
   cmd->rect = ui->bounds;
+  cmd->rect.w += ui->padding.x;
+  cmd->rect.h += ui->padding.y;
 
   UI_PopState();
   UI_UpdateLayout(&cmd->rect);
@@ -204,7 +221,12 @@ void UI_Render() {
     UI_DrawCmd *cmd = &ui_draw_queue[i];
     switch (cmd->type) {
       case UI_RECT:
-        SDL_RenderDrawRect(renderer, (Rect*)&cmd->rect);
+        SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
+        SDL_RenderFillRect(renderer, (Rect*)&cmd->rect);
+        break;
+      case UI_PANEL:
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        SDL_RenderFillRect(renderer, (Rect*)&cmd->rect);
         break;
       case UI_IMAGE:
         SDL_RenderCopy(renderer, cmd->image, NULL, (Rect*)&cmd->rect);
