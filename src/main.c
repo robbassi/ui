@@ -83,15 +83,9 @@ typedef enum {
   UI_IMAGE,
 } UI_DrawCmdType;
 
-typedef enum {
-  UI_STYLE_NONE,
-  UI_STYLE_HOVER,
-  UI_STYLE_ACTIVE,
-} UI_DrawCmdStyle;
-
 typedef struct {
+  u32 id;
   UI_DrawCmdType type;
-  UI_DrawCmdStyle style;
   Rect rect;
   void* image;
 } UI_DrawCmd;
@@ -109,11 +103,13 @@ UI_DrawCmd *UI_PushDrawCmd() {
 
 // UI State
 
-typedef struct {
-  i32 window_id;
-  i32 hover_id;
-  i32 active_id;
-} UI_FocusState;
+// UI Focus State
+
+i32 ui_window_id = 0;
+i32 ui_hover_id = 0;
+i32 ui_active_id = 0;
+
+// UI Input State
 
 typedef enum {
   UI_MOUSE_BUTTON_LEFT = 1 << 0,
@@ -131,8 +127,9 @@ const UI_InputState ui_default_input_state = {
   .mouse_button_down = 0,
   .mouse_button_up = 0,
 };
-
 UI_InputState ui_input_state = ui_default_input_state;
+
+// UI Layout State
 
 typedef enum {
   UI_LAYOUT_HORIZONTAL,
@@ -235,25 +232,40 @@ void UI_Rect(i32 w, i32 h) {
 // UI Button
 
 bool UI_Button(const char *label) {
+  u32 id = ui_hash(label, strlen(label));
   UI_DrawCmd *cmd = UI_PushDrawCmd();
+  cmd->id = id;
   cmd->type = UI_BUTTON;
-  cmd->style = UI_STYLE_NONE;
   cmd->rect = (Rect){ui->pos.x, ui->pos.y, 100, 50};
+  
+  bool clicked = false;
+  {
+    bool hovered = UI_MouseInRect(&cmd->rect);
 
-  bool active = false;
-  if (UI_MouseInRect(&cmd->rect)) {
-    if (ui_input_state.mouse_button_down & UI_MOUSE_BUTTON_LEFT) {
-      cmd->style = UI_STYLE_ACTIVE;
-    } else if (ui_input_state.mouse_button_up & UI_MOUSE_BUTTON_LEFT) {
-      cmd->style = UI_STYLE_ACTIVE;
-      active = true;
+    if (hovered) {
+      if (ui_hover_id == 0) {
+        ui_hover_id = id;
+      }
     } else {
-      cmd->style = UI_STYLE_HOVER;
+      if (ui_hover_id == id) {
+        ui_hover_id = 0;
+      }
+    }
+
+    if (ui_active_id == 0 && ui_hover_id == id && ui_input_state.mouse_button_down & UI_MOUSE_BUTTON_LEFT) {
+      ui_active_id = id;
+    }
+
+    if (ui_active_id == id && ui_input_state.mouse_button_up & UI_MOUSE_BUTTON_LEFT) {
+      if (hovered) {
+        clicked = true;
+      }
+      ui_active_id = 0;
     }
   }
 
   UI_UpdateLayout(&cmd->rect);
-  return active;
+  return clicked;
 }
 
 // UI Panel
@@ -300,16 +312,12 @@ void UI_Render() {
         break;
       case UI_BUTTON:
         UI_Color color = {0, 0, 0, 255};
-        switch (cmd->style) {
-          case UI_STYLE_NONE:
-            color.b = 100;
-            break;
-          case UI_STYLE_HOVER:
-            color.b = 150;
-            break;
-          case UI_STYLE_ACTIVE:
-            color.b = 200;
-            break;
+        if (ui_active_id == cmd->id) {
+          color.b = 200;
+        } else if (ui_hover_id == cmd->id) {
+          color.b = 150;
+        } else {
+          color.b = 100;
         }
         SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, color.a);
         SDL_RenderFillRect(renderer, (Rect*)&cmd->rect);
@@ -400,7 +408,8 @@ i32 main() {
           if(UI_Button("Ok")) {
             printf("Ok\n");
           }
-          ui->pos.x -= 20;
+          // Cause button to overlap.
+          ui->pos.x -= 40;
           if(UI_Button("Cancel")) {
             printf("Cancel\n");
           }
