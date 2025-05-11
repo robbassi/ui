@@ -64,6 +64,8 @@ typedef double f64;
 
 // UI Hash
 
+// FNV-1a hash.
+// https://en.wikipedia.org/wiki/Fowler%E2%80%93Noll%E2%80%93Vo_hash_function
 u32 ui_hash(const void *data, size_t len) {
   const u8 *bytes = (const u8 *)data;
   u32 hash = 2166136261u;
@@ -108,6 +110,8 @@ UI_DrawCmd *UI_PushDrawCmd() {
 i32 ui_window_id = 0;
 i32 ui_hover_id = 0;
 i32 ui_active_id = 0;
+// When true, the hover id can be overriden. Useful for overlapping buttons.
+bool ui_hover_greedy = false;
 
 // UI Input State
 
@@ -239,27 +243,31 @@ bool UI_Button(const char *label) {
   cmd->rect = (Rect){ui->pos.x, ui->pos.y, 100, 50};
   
   bool clicked = false;
-  {
-    bool hovered = UI_MouseInRect(&cmd->rect);
-
-    if (hovered) {
-      if (ui_hover_id == 0) {
-        ui_hover_id = id;
-      }
-    } else {
-      if (ui_hover_id == id) {
-        ui_hover_id = 0;
-      }
+  if (UI_MouseInRect(&cmd->rect)) {
+    // Grab hover id if possible.
+    if (ui_hover_id == 0 || ui_hover_greedy) {
+      ui_hover_id = id;
     }
 
+    // Set active if mouse down and hovered, and nothing else is active.
     if (ui_active_id == 0 && ui_hover_id == id && ui_input_state.mouse_button_down & UI_MOUSE_BUTTON_LEFT) {
       ui_active_id = id;
     }
 
+    // Detect click, if active.
     if (ui_active_id == id && ui_input_state.mouse_button_up & UI_MOUSE_BUTTON_LEFT) {
-      if (hovered) {
-        clicked = true;
-      }
+      clicked = true;
+      ui_active_id = 0;
+    }
+
+  } else {
+    // Release hover id.
+    if (ui_hover_id == id) {
+      ui_hover_id = 0;
+    }
+
+    // Release active id, if mouse released outside of button.
+    if (ui_active_id == id && ui_input_state.mouse_button_up & UI_MOUSE_BUTTON_LEFT) {
       ui_active_id = 0;
     }
   }
@@ -410,9 +418,11 @@ i32 main() {
           }
           // Cause button to overlap.
           ui->pos.x -= 40;
+          ui_hover_greedy = true;
           if(UI_Button("Cancel")) {
             printf("Cancel\n");
           }
+          ui_hover_greedy = false;
         UI_EndPanel();
       UI_EndPanel();
     }
