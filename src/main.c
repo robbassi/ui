@@ -62,6 +62,18 @@ typedef double f64;
 #define UI_MAX_DRAW_CMD 1024
 #define UI_MAX_STATE 1024
 
+// UI Hash
+
+u32 ui_hash(const void *data, size_t len) {
+  const u8 *bytes = (const u8 *)data;
+  u32 hash = 2166136261u;
+  for (size_t i = 0; i < len; ++i) {
+    hash ^= bytes[i];
+    hash *= 16777619u;
+  }
+  return hash;
+}
+
 // UI Draw Command
 
 typedef enum {
@@ -103,16 +115,21 @@ typedef struct {
   i32 active_id;
 } UI_FocusState;
 
+typedef enum {
+  UI_MOUSE_BUTTON_LEFT = 1 << 0,
+  UI_MOUSE_BUTTON_RIGHT = 1 << 1,
+} UI_MouseButton;
+
 typedef struct {
   v2 mouse_pos;
-  bool left_mouse_button_down;
-  bool right_mouse_button_down;
+  u8 mouse_button_down;
+  u8 mouse_button_up;
 } UI_InputState;
 
 const UI_InputState ui_default_input_state = {
   .mouse_pos = {0, 0},
-  .left_mouse_button_down = false,
-  .right_mouse_button_down = false,
+  .mouse_button_down = 0,
+  .mouse_button_up = 0,
 };
 
 UI_InputState ui_input_state = ui_default_input_state;
@@ -155,7 +172,6 @@ void UI_Clear() {
   ui_state_stack_length = 0;
   ui = &ui_state_stack[ui_state_stack_length];
   *ui = ui_default_state;
-  ui_input_state = ui_default_input_state;
 }
 
 void UI_PushState() {
@@ -218,21 +234,26 @@ void UI_Rect(i32 w, i32 h) {
 
 // UI Button
 
-void UI_Button(const char *label) {
+bool UI_Button(const char *label) {
   UI_DrawCmd *cmd = UI_PushDrawCmd();
   cmd->type = UI_BUTTON;
   cmd->style = UI_STYLE_NONE;
   cmd->rect = (Rect){ui->pos.x, ui->pos.y, 100, 50};
 
+  bool active = false;
   if (UI_MouseInRect(&cmd->rect)) {
-    if (ui_input_state.left_mouse_button_down) {
+    if (ui_input_state.mouse_button_down & UI_MOUSE_BUTTON_LEFT) {
       cmd->style = UI_STYLE_ACTIVE;
+    } else if (ui_input_state.mouse_button_up & UI_MOUSE_BUTTON_LEFT) {
+      cmd->style = UI_STYLE_ACTIVE;
+      active = true;
     } else {
       cmd->style = UI_STYLE_HOVER;
     }
   }
 
   UI_UpdateLayout(&cmd->rect);
+  return active;
 }
 
 // UI Panel
@@ -326,28 +347,43 @@ i32 main() {
   while (true) {
 
     // Handle events.
+    ui_input_state.mouse_button_up = 0;
     while (SDL_PollEvent(&event)) {
       switch (event.type) {
         case SDL_QUIT:
-          exit(1);
+          exit(0);
+        case SDL_KEYDOWN:
+          if (event.key.keysym.sym == SDLK_ESCAPE) {
+            exit(0);
+          }
+          break;
+        case SDL_MOUSEBUTTONDOWN:
+          if (event.button.button == SDL_BUTTON(SDL_BUTTON_LEFT)) {
+            ui_input_state.mouse_button_down |= UI_MOUSE_BUTTON_LEFT;
+            ui_input_state.mouse_button_up &= ~UI_MOUSE_BUTTON_LEFT;
+          }
+          if (event.button.button == SDL_BUTTON(SDL_BUTTON_RIGHT)) {
+            ui_input_state.mouse_button_down |= UI_MOUSE_BUTTON_RIGHT;
+            ui_input_state.mouse_button_up &= ~UI_MOUSE_BUTTON_RIGHT;
+          }
+          break;
+        case SDL_MOUSEBUTTONUP:
+          if (event.button.button == SDL_BUTTON(SDL_BUTTON_LEFT)) {
+            ui_input_state.mouse_button_up |= UI_MOUSE_BUTTON_LEFT;
+            ui_input_state.mouse_button_down &= ~UI_MOUSE_BUTTON_LEFT;
+          }
+          if (event.button.button == SDL_BUTTON(SDL_BUTTON_RIGHT)) {
+            ui_input_state.mouse_button_up |= UI_MOUSE_BUTTON_RIGHT;
+            ui_input_state.mouse_button_down &= ~UI_MOUSE_BUTTON_RIGHT;
+          }
+          break;
       }
     }
+    SDL_GetMouseState(&ui_input_state.mouse_pos.x, &ui_input_state.mouse_pos.y);
 
     // Update.
     {
       UI_Clear();
-
-      {
-        u32 button_mask = SDL_GetMouseState(&ui_input_state.mouse_pos.x, &ui_input_state.mouse_pos.y);
-        switch (button_mask) {
-          case SDL_BUTTON(SDL_BUTTON_LEFT):
-            ui_input_state.left_mouse_button_down = true;
-            break;
-          case SDL_BUTTON(SDL_BUTTON_RIGHT):
-            ui_input_state.right_mouse_button_down = true;
-            break;
-        }
-      }
 
       UI_BeginPanel();
         UI_BeginPanel();
@@ -361,7 +397,13 @@ i32 main() {
           UI_Rect(200, 50);
           UI_Rect(200, 50);
           UI_Rect(200, 50);
-          UI_Button("Test");
+          if(UI_Button("Ok")) {
+            printf("Ok\n");
+          }
+          ui->pos.x -= 20;
+          if(UI_Button("Cancel")) {
+            printf("Cancel\n");
+          }
         UI_EndPanel();
       UI_EndPanel();
     }
