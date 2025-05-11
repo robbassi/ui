@@ -44,6 +44,7 @@ void InitSDL() {
 
 typedef SDL_Point v2;
 typedef SDL_Rect Rect;
+typedef SDL_Color UI_Color;
 
 typedef int8_t i8;
 typedef int16_t i16;
@@ -65,15 +66,15 @@ typedef double f64;
 
 typedef enum {
   UI_RECT,
+  UI_BUTTON,
   UI_PANEL,
   UI_IMAGE,
 } UI_DrawCmdType;
 
 typedef enum {
   UI_STYLE_NONE,
-  UI_STYLE_ACTIVE,
   UI_STYLE_HOVER,
-  UI_STYLE_DOWN,
+  UI_STYLE_ACTIVE,
 } UI_DrawCmdStyle;
 
 typedef struct {
@@ -95,6 +96,26 @@ UI_DrawCmd *UI_PushDrawCmd() {
 }
 
 // UI State
+
+typedef struct {
+  i32 window_id;
+  i32 hover_id;
+  i32 active_id;
+} UI_FocusState;
+
+typedef struct {
+  v2 mouse_pos;
+  bool left_mouse_button_down;
+  bool right_mouse_button_down;
+} UI_InputState;
+
+const UI_InputState ui_default_input_state = {
+  .mouse_pos = {0, 0},
+  .left_mouse_button_down = false,
+  .right_mouse_button_down = false,
+};
+
+UI_InputState ui_input_state = ui_default_input_state;
 
 typedef enum {
   UI_LAYOUT_HORIZONTAL,
@@ -134,6 +155,7 @@ void UI_Clear() {
   ui_state_stack_length = 0;
   ui = &ui_state_stack[ui_state_stack_length];
   *ui = ui_default_state;
+  ui_input_state = ui_default_input_state;
 }
 
 void UI_PushState() {
@@ -170,6 +192,18 @@ void UI_UpdateLayout(Rect *rect) {
   }
 }
 
+// UI Utils
+
+bool UI_MouseInRect(Rect *rect) {
+  v2 *mouse_pos = &ui_input_state.mouse_pos;
+  if (mouse_pos->x >= rect->x && mouse_pos->x <= rect->x + rect->w &&
+      mouse_pos->y >= rect->y && mouse_pos->y <= rect->y + rect->h) {
+    return true;
+  }
+
+  return false;
+}
+
 // UI Widgets
 
 // UI Rect
@@ -178,6 +212,25 @@ void UI_Rect(i32 w, i32 h) {
   UI_DrawCmd *cmd = UI_PushDrawCmd();
   cmd->type = UI_RECT;
   cmd->rect = (Rect){ui->pos.x, ui->pos.y, w, h};
+
+  UI_UpdateLayout(&cmd->rect);
+}
+
+// UI Button
+
+void UI_Button(const char *label) {
+  UI_DrawCmd *cmd = UI_PushDrawCmd();
+  cmd->type = UI_BUTTON;
+  cmd->style = UI_STYLE_NONE;
+  cmd->rect = (Rect){ui->pos.x, ui->pos.y, 100, 50};
+
+  if (UI_MouseInRect(&cmd->rect)) {
+    if (ui_input_state.left_mouse_button_down) {
+      cmd->style = UI_STYLE_ACTIVE;
+    } else {
+      cmd->style = UI_STYLE_HOVER;
+    }
+  }
 
   UI_UpdateLayout(&cmd->rect);
 }
@@ -224,6 +277,24 @@ void UI_Render() {
         SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
         SDL_RenderFillRect(renderer, (Rect*)&cmd->rect);
         break;
+      case UI_BUTTON:
+        UI_Color color = {0, 0, 0, 255};
+        switch (cmd->style) {
+          case UI_STYLE_NONE:
+            color.b = 100;
+            break;
+          case UI_STYLE_HOVER:
+            color.b = 150;
+            break;
+          case UI_STYLE_ACTIVE:
+            color.b = 200;
+            break;
+        }
+        SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, color.a);
+        SDL_RenderFillRect(renderer, (Rect*)&cmd->rect);
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        SDL_RenderDrawRect(renderer, (Rect*)&cmd->rect);
+        break;
       case UI_PANEL:
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderFillRect(renderer, (Rect*)&cmd->rect);
@@ -266,6 +337,18 @@ i32 main() {
     {
       UI_Clear();
 
+      {
+        u32 button_mask = SDL_GetMouseState(&ui_input_state.mouse_pos.x, &ui_input_state.mouse_pos.y);
+        switch (button_mask) {
+          case SDL_BUTTON(SDL_BUTTON_LEFT):
+            ui_input_state.left_mouse_button_down = true;
+            break;
+          case SDL_BUTTON(SDL_BUTTON_RIGHT):
+            ui_input_state.right_mouse_button_down = true;
+            break;
+        }
+      }
+
       UI_BeginPanel();
         UI_BeginPanel();
           ui->layout = UI_LAYOUT_VERTICAL;
@@ -278,6 +361,7 @@ i32 main() {
           UI_Rect(200, 50);
           UI_Rect(200, 50);
           UI_Rect(200, 50);
+          UI_Button("Test");
         UI_EndPanel();
       UI_EndPanel();
     }
