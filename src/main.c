@@ -61,6 +61,8 @@ typedef double f64;
 
 #define UI_MAX_DRAW_CMD 1024
 #define UI_MAX_STATE 1024
+#define UI_MAX_ALIGN 1024
+#define UI_MAX_STORAGE 10000
 
 // UI Hash
 
@@ -74,6 +76,44 @@ u32 ui_hash(const void *data, size_t len) {
     hash *= 16777619u;
   }
   return hash;
+}
+
+// UI Alignment Types
+
+typedef enum {
+  UI_ALIGN_LEFT,
+  UI_ALIGN_RIGHT,
+} UI_Align;
+
+// UI Storage
+
+typedef union {
+  struct {
+    UI_Align align;
+    i32 start_index;
+    Rect bounds;
+    i32 x_offset;
+  } align;
+} UI_Data;
+
+typedef struct {
+  u32 id;
+  UI_Data data;
+} UI_StorageEntry;
+
+UI_StorageEntry ui_storage[UI_MAX_STORAGE] = {0};
+
+UI_Data *ui_get_data(u32 id) {
+  for (i32 i = 0; i < UI_MAX_STORAGE; i++) {
+    u32 index = (id + i) % UI_MAX_STORAGE;
+    if (ui_storage[index].id == 0 || ui_storage[index].id == id) {
+      ui_storage[index].id = id;
+      return &ui_storage[index].data;
+    }
+    printf("Storage cache miss [%u]: 0x%x\n", index, id);
+  }
+
+  assert(false);
 }
 
 // UI Draw Command
@@ -219,6 +259,53 @@ bool UI_MouseInRect(Rect *rect) {
   }
 
   return false;
+}
+
+// UI Alignment
+// typedef struct {
+//   i32 start_index;
+//   v2 start_pos;
+//   UI_Align align;
+// } UI_AlignInfo;
+// 
+const u8 *ui_align_stack[UI_MAX_ALIGN];
+i32 ui_align_stack_length = 0;
+
+void UI_BeginAlign(UI_Align align, const u8 *label) {
+  ui_align_stack[ui_align_stack_length++] = label;
+  u32 id = ui_hash(label, strlen(label));
+  UI_Data *data = ui_get_data(id);
+  data->align.start_index = ui_draw_queue_length;
+  data->align.align = align;
+
+  UI_PushState();
+  ui->pos.x += data->align.x_offset;
+  ui->bounds.w = 0;
+  ui->bounds.h = 0;
+}
+
+void UI_EndAlign() {
+  const u8 *label = ui_align_stack[--ui_align_stack_length];
+  u32 id = ui_hash(label, strlen(label));
+  UI_Data *data = ui_get_data(id);
+  data->align.bounds = ui->bounds;
+  UI_PopState();
+
+  // TODO: Remove if, find a better way to stabilize.
+  if (data->align.x_offset == 0) {
+    switch (data->align.align) {
+      case UI_ALIGN_LEFT: {
+        i32 x = data->align.bounds.x;
+        data->align.x_offset = ui->bounds.x - x;
+      } break;
+      case UI_ALIGN_RIGHT: {
+        i32 x = data->align.bounds.x + data->align.bounds.w;
+        data->align.x_offset = ui->bounds.x + ui->bounds.w - x;
+      } break;
+    }
+  }
+  //printf("h = %d\n", data->align.bounds.h);
+  ui->bounds.h += data->align.bounds.h - ui->bounds.h;
 }
 
 // UI Widgets
@@ -425,6 +512,26 @@ i32 main() {
           ui_hover_greedy = false;
         UI_EndPanel();
       UI_EndPanel();
+
+
+      UI_BeginPanel();
+        UI_Rect(500, 20);
+        UI_BeginAlign(UI_ALIGN_LEFT, "Left Buttons");
+          if(UI_Button("Cancel#")) {
+            printf("Cancel\n");
+          }
+        UI_EndAlign();
+        UI_BeginAlign(UI_ALIGN_RIGHT, "Right Buttons");
+          ui->layout = UI_LAYOUT_HORIZONTAL;
+          if(UI_Button("Ok#")) {
+            printf("Ok\n");
+          }
+          if(UI_Button("Back#")) {
+            printf("Back\n");
+          }
+        UI_EndAlign();
+      UI_EndPanel();
+
     }
 
     // Render.
